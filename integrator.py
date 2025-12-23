@@ -1,4 +1,3 @@
-import json
 import logging
 
 class ValidationAgent:
@@ -25,27 +24,18 @@ class ValidationAgent:
                 candidates[gene] = {
                     "gene": gene,
                     "evidence_sources": set(),
-                    "scores": {"omics": 0, "kg": 0},
+                    "scores": {"omics": 0, "kg": 0, "opentargets": 0},
                     "raw_evidence_vault": {
                         "kg_raw_facts": [],
                         "omics_full_summary": "",
-                        "lit_raw_abstracts": []
+                        "lit_raw_abstracts": [],
+                        "ot_summary": ""
                     },
                     "evidence_chain": {"kg_hypothesis": "N/A", "omics_data": None}
                 }
             
             entry = candidates[gene]
             entry['evidence_sources'].add(source)
-            
-            # --- 🔍 探针调试 (针对 LAMA1) ---
-            if gene == "LAMA1":
-                print(f"   [🔍 PROBE] 正在处理 LAMA1 (Source: {source})")
-                print(f"   [🔍 PROBE] Data Keys: {list(data.keys())}")
-                if 'kg_raw' in data:
-                    print(f"   [🔍 PROBE] kg_raw value: {str(data['kg_raw'])[:100]}...")
-                else:
-                    print(f"   [🔍 PROBE] ❌ 警告: Data 中没有 'kg_raw' 键！")
-            # -------------------------------
 
             # 2. 提取 KG 证据
             if 'kg_narrative' in data and data['kg_narrative']:
@@ -55,16 +45,11 @@ class ValidationAgent:
             # 提取 KG 原始事实 (兼容多种键名 + 暴力存储)
             # 优先找 kg_raw (Explorer 传过来的), 其次找 raw_facts_map (KGTool 原生的)
             raw_facts = data.get('kg_raw') or data.get('raw_facts_map')
-            
             if raw_facts:
-                # 确保是列表
                 if isinstance(raw_facts, str):
                     raw_facts = [raw_facts]
                 elif not isinstance(raw_facts, list):
                     raw_facts = []
-
-                # 直接存入，不做复杂的 set 去重，防止 unhashable error 导致静默失败
-                # 如果已经有数据，就 extend，否则赋值
                 if entry['raw_evidence_vault']['kg_raw_facts']:
                      for fact in raw_facts:
                          if fact not in entry['raw_evidence_vault']['kg_raw_facts']:
@@ -83,11 +68,18 @@ class ValidationAgent:
                         "log2fc": om_data.get('log2fc', "N/A"),
                         "p_value": om_data.get('p_value', "N/A")
                     }
-                
                 if 'ai_summary' in om_data:
                     entry['raw_evidence_vault']['omics_full_summary'] = om_data['ai_summary']
 
-        # 4. 执行数据摄入
+        # 4. 提取 OpenTargets 证据
+            if 'opentargets_data' in data:
+                ot_data = data['opentargets_data']
+                ot_score = ot_data.get('score', 0.0)
+                entry['scores']['opentargets'] = ot_score
+                if ot_score > 0:
+                    entry['raw_evidence_vault']['ot_summary'] = f"OpenTargets Score: {ot_score} (Ranked in Top Lists)"
+
+        # 5. 执行数据摄入
         for g, d in top_down_results.items(): 
             register(g, "Top-Down (KG-Driven)", d)
             
@@ -105,26 +97,25 @@ class ValidationAgent:
             if "Top-Down (KG-Driven)" in sources and "Bottom-Up (Omics-Driven)" in sources:
                 tier = "Tier 1: Consensus (双重验证)"
                 final_score = base_score + 5.0
-                action_guide = "建议作为首选实验目标 (Priority High)"
             elif "Bottom-Up (Omics-Driven)" in sources:
                 tier = "Tier 2: Data-Driven (新颖发现)"
                 final_score = base_score + 2.0
-                action_guide = "建议进行文献挖掘以寻找旁证 (Priority Med)"
             else:
                 tier = "Tier 3: Theory-Only (理论预测)"
-                final_score = 1.0 
-                action_guide = "建议检查实验条件或作为备选 (Priority Low)"
+                final_score = 1.0
             
+            # 如果是发现模式，OT 分数低其实是好事（说明新颖），但如果是 0 分可能意味着完全没研究。
+            # 这里简单加分：只要有 OT 数据，说明有一定外部可信度，加 0.5 分作为奖励
+            if info['scores']['opentargets'] > 0:
+                final_score += 0.5
             info['evidence_sources'] = list(info['evidence_sources'])
             
             ranked_results.append({
                 "Gene": gene,
                 "Tier": tier,
                 "Score": round(final_score, 2),
-                "Action_Guide": action_guide,
                 "Omics_Log2FC": info['evidence_chain']['omics_data'].get('log2fc') if info['evidence_chain']['omics_data'] else "N/A",
                 "KG_Hypothesis": info['evidence_chain']['kg_hypothesis'],
-                # 确保这里输出的是最新的 vault
                 "Raw_Evidence": info['raw_evidence_vault'],
                 "_raw_data": info 
             })

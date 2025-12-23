@@ -8,3 +8,5 @@ xlsxModify/
 .env
 *.env
 data/
+*.json
+*.xlsx
