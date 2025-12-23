@@ -1,12 +1,11 @@
 # deepseek_api.py
-import requests
-import time
+import requests, time, os
 from dotenv import load_dotenv
 
-# 加载环境变量
+# === 配置 DeepSeek ===
+BASE_URL = "https://api.deepseek.com/chat/completions"
 load_dotenv()
-DEEPSEEK_API_KEY = "sk-fa2129d5790b4f45b071b9998bbdba0b" # 建议放入 .env 文件
-DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
+API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
 def call_deepseek(user_prompt: str, system_prompt: str = "You are a helpful assistant.", json_mode: bool = False, timeout: int = 60, retries: int = 3) -> str:
     """
@@ -20,7 +19,7 @@ def call_deepseek(user_prompt: str, system_prompt: str = "You are a helpful assi
     """
     headers = {
         "Content-Type": "application/json", 
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
+        "Authorization": f"Bearer {API_KEY}"
     }
     
     payload = {
@@ -39,7 +38,7 @@ def call_deepseek(user_prompt: str, system_prompt: str = "You are a helpful assi
 
     for attempt in range(retries):
         try:
-            response = requests.post(DEEPSEEK_URL, headers=headers, json=payload, timeout=timeout)
+            response = requests.post(BASE_URL, headers=headers, json=payload, timeout=timeout)
             
             if response.status_code != 200:
                 print(f"⚠️ [API Error] {response.status_code}: {response.text}")

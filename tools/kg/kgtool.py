@@ -1,10 +1,12 @@
 import pandas as pd
 from py2neo import Graph
-import requests, json
+import requests, json, os
+from dotenv import load_dotenv
 
 # === 配置 DeepSeek ===
-API_KEY = "sk-fa2129d5790b4f45b071b9998bbdba0b"
 BASE_URL = "https://api.deepseek.com/chat/completions"
+load_dotenv()
+API_KEY = os.getenv("DEEPSEEK_API_KEY")
 
 class KGTool:
     """

@@ -4,4 +4,7 @@ deepseek_raw_debug.txt
 llm_raw_outputs.txt
 run_log.json
 .zip
+xlsxModify/
+.env
+*.env
 data/

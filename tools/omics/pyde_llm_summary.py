@@ -8,11 +8,12 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
-# =========================
-# DeepSeek API 配置
-# =========================
-DEEPSEEK_URL = "https://api.deepseek.com/chat/completions"
-DEEPSEEK_API_KEY = "sk-fa2129d5790b4f45b071b9998bbdba0b"   # ← 填你的 DeepSeek API Key
+from dotenv import load_dotenv
+
+# === 配置 DeepSeek ===
+BASE_URL = "https://api.deepseek.com/chat/completions"
+load_dotenv()
+API_KEY = os.getenv("DEEPSEEK_API_KEY")
 MODEL_NAME = "deepseek-chat"
 
 # =========================
@@ -30,7 +31,7 @@ TEST_LIMIT = 9999  # ⚠️ 仅处理前 10 个基因
 def call_deepseek(prompt, timeout=60):
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
+        "Authorization": f"Bearer {API_KEY}"
     }
 
     payload = {
@@ -43,7 +44,7 @@ def call_deepseek(prompt, timeout=60):
     }
 
     response = requests.post(
-        DEEPSEEK_URL,
+        BASE_URL,
         headers=headers,
         json=payload,
         timeout=timeout
