@@ -29,8 +29,21 @@ class OpenTargetsTool:
         
         # 1. 获取目标基因列表 (支持直接传列表或嵌套在 args 中)
         target_genes = context.get("genes") or context.get("args", {}).get("genes", [])
-        # 转为大写集合以便匹配
-        target_genes_set = set(g.upper() for g in target_genes) if target_genes else None
+        
+        # 处理特殊占位符
+        if target_genes == "<auto>" or (isinstance(target_genes, list) and "<auto>" in target_genes):
+            target_genes = None
+        
+        # 确保是列表格式
+        if isinstance(target_genes, str):
+            target_genes = [target_genes]
+        
+        # 转为大写集合以便匹配 (仅当有有效基因列表时)
+        target_genes_set = None
+        if target_genes and len(target_genes) > 0:
+            target_genes_set = set(g.upper() for g in target_genes if g and isinstance(g, str))
+            if target_genes_set:
+                print(f"   [OpenTargets] 正在筛选特定基因: {list(target_genes_set)[:5]}...")
 
         EFO_MAP = {
             "hepatocellular carcinoma": "EFO_0000186",
