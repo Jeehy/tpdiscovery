@@ -3,7 +3,7 @@ import json, traceback
 from datetime import datetime
 from explorers import ResearchExplorers
 from integrator import ValidationAgent
-from tools.literature.literature_agent import LiteratureAgent
+from tools.literature.literature_tool import LiteratureTool
 from playbook import Playbook
 
 # ==========================================
@@ -21,7 +21,7 @@ def main():
     print(f"📚 [Playbook] 已加载历史策略库，当前包含 {len(playbook.strategies)} 条经验。")
     explorers = ResearchExplorers()
     validator = ValidationAgent()
-    lit_agent = LiteratureAgent()
+    lit_agent = LiteratureTool()
     
     final_candidates = []
     step_trace = []

@@ -12,7 +12,6 @@ class KGTool:
     """
     知识图谱工具 (Logic Fixed Version)
     
-    修复点:
     1. Validation 模式下不再过滤已知基因，确保能查到 TP53 等核心基因的证据。
     2. Discovery 模式增加 Hub Gene 黑名单 (如 UBC)，减少噪音。
     """

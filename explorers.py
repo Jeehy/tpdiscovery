@@ -1,5 +1,5 @@
-from tools.kg.kgtool import KGTool
-from tools.omics.omicstool import OmicsDataRetriever
+from tools.kg.kg_tool import KGTool
+from tools.omics.omics_tool import OmicsDataRetriever
 from tools.omics.opentargets_tool import OpenTargetsTool
 
 class ResearchExplorers:
