@@ -95,6 +95,9 @@ class OmicsDataRetriever:
             result[gene] = {
                 "omics_score": float(row['AI_Score']),
                 "log2fc": float(row['Log2FC_DEA']),
+                "padj": float(row['Padj_DEA']) if 'Padj_DEA' in row and pd.notna(row['Padj_DEA']) else None,
+                "spearman_r": float(row['Spearman_R']) if 'Spearman_R' in row and pd.notna(row['Spearman_R']) else None,
+                "p_correlation": float(row['P_Correlation']) if 'P_Correlation' in row and pd.notna(row['P_Correlation']) else None,
                 "drug_source": row['Source_Drug'],
                 "ai_summary": summary,
                 "found_in_omics": True
@@ -135,6 +138,9 @@ class OmicsDataRetriever:
                     "found_in_omics": True,
                     "omics_score": float(best_match['AI_Score']),
                     "log2fc": float(best_match['Log2FC_DEA']),
+                    "padj": float(best_match['Padj_DEA']) if 'Padj_DEA' in best_match and pd.notna(best_match['Padj_DEA']) else None,
+                    "spearman_r": float(best_match['Spearman_R']) if 'Spearman_R' in best_match and pd.notna(best_match['Spearman_R']) else None,
+                    "p_correlation": float(best_match['P_Correlation']) if 'P_Correlation' in best_match and pd.notna(best_match['P_Correlation']) else None,
                     "drug_source": best_match['Source_Drug'],
                     "ai_summary": str(best_match.get('LLM_Response', ''))[:100] + "..."
                 }

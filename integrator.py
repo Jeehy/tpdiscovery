@@ -66,7 +66,10 @@ class ValidationAgent:
                 if not entry['evidence_chain']['omics_data']:
                     entry['evidence_chain']['omics_data'] = {
                         "log2fc": om_data.get('log2fc', "N/A"),
-                        "p_value": om_data.get('p_value', "N/A")
+                        "padj": om_data.get('padj', "N/A"),  # 差异表达显著性 (FDR校正后)
+                        "spearman_r": om_data.get('spearman_r', "N/A"),  # 与IC50的相关系数
+                        "p_correlation": om_data.get('p_correlation', "N/A"),  # 相关性显著性
+                        "drug_source": om_data.get('drug_source', "N/A")
                     }
                 if 'ai_summary' in om_data:
                     entry['raw_evidence_vault']['omics_full_summary'] = om_data['ai_summary']
@@ -110,14 +113,14 @@ class ValidationAgent:
                 final_score += 0.5
             info['evidence_sources'] = list(info['evidence_sources'])
             
+            # 构建精简的报告结构，详细数据保留在 _raw_data 中
             ranked_results.append({
                 "Gene": gene,
                 "Tier": tier,
                 "Score": round(final_score, 2),
-                "Omics_Log2FC": info['evidence_chain']['omics_data'].get('log2fc') if info['evidence_chain']['omics_data'] else "N/A",
                 "KG_Hypothesis": info['evidence_chain']['kg_hypothesis'],
-                "Raw_Evidence": info['raw_evidence_vault'],
-                "_raw_data": info 
+                # 完整的结构化数据
+                "_raw_data": info
             })
 
         ranked_results.sort(key=lambda x: x['Score'], reverse=True)
@@ -135,14 +138,15 @@ class ValidationAgent:
                 elif 'medium' in support:
                     item['Score'] += 1.0
                 
-                item['Literature_Evidence'] = {
+                # 文献证据添加到 _raw_data 中
+                item['_raw_data']['literature_evidence'] = {
                     "support": lit_data.get('lit_support_level'),
                     "conclusion": lit_data.get('lit_conclusion'),
                     "citations": lit_data.get('key_citations', [])
                 }
                 
                 if 'raw_evidence_snippets' in lit_data:
-                    item['Raw_Evidence']['lit_raw_abstracts'] = lit_data['raw_evidence_snippets']
+                    item['_raw_data']['raw_evidence_vault']['lit_raw_abstracts'] = lit_data['raw_evidence_snippets']
                     
         ranked_list.sort(key=lambda x: x['Score'], reverse=True)
         return ranked_list

@@ -1,12 +1,9 @@
-import pandas as pd
 from py2neo import Graph
-import requests, json, os
-from dotenv import load_dotenv
-
-# === 配置 DeepSeek ===
-BASE_URL = "https://api.deepseek.com/chat/completions"
-load_dotenv()
-API_KEY = os.getenv("DEEPSEEK_API_KEY")
+import os
+import sys, json
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from prompts import KG_DISCOVERY_ANALYSIS, KG_VALIDATION_ANALYSIS
+from deepseek_api import call_llm
 
 class KGTool:
     """
@@ -32,38 +29,6 @@ class KGTool:
         except Exception as e:
             print(f"KGTool: 连接失败 - {e}")
 
-
-    # ==========================================
-    #  LLM 调用辅助函数 (核心魔法)
-    # ==========================================
-    def _call_deepseek_json(self, system_prompt, user_prompt):
-        """调用 DeepSeek 并强制返回 JSON"""
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {API_KEY}"
-        }
-        payload = {
-            "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "stream": False,
-            "temperature": 0.2, # 低温度保证格式稳定
-            "response_format": {"type": "json_object"} # <--- 关键：强制 JSON
-        }
-        
-        try:
-            resp = requests.post(BASE_URL, headers=headers, json=payload, timeout=60)
-            if resp.status_code == 200:
-                content = resp.json()["choices"][0]["message"]["content"]
-                return json.loads(content) # 直接解析为 Python 字典
-            else:
-                print(f"LLM Error: {resp.text}")
-                return None
-        except Exception as e:
-            print(f"LLM Call Failed: {e}")
-            return None
     # ============================================================
     #  底层通用检索 (逻辑已修复)
     # ============================================================
@@ -159,18 +124,10 @@ class KGTool:
         top_list = sorted(candidates.items(), key=lambda x: len(x[1]), reverse=True)[:15]
         facts_text = "\n".join([f"- {g}: {' '.join(ev)}" for g, ev in top_list])
 
-        sys_prompt = "You are a scientist. Output strictly in JSON."
-        user_prompt = f"""
-        Analyze candidate targets for {disease}:
-        {facts_text}
+        sys_prompt = "你是资深生物信息学家，请严格输出JSON格式。"
+        user_prompt = KG_DISCOVERY_ANALYSIS.format(disease=disease, facts_text=facts_text)
         
-        Task:
-        1. Select Top 10 targets.
-        2. JSON Format:
-        {{ "omics_targets": ["GeneA", ...], "evidence_map": {{ "GeneA": "Full reasoning..." }} }}
-        """
-        
-        llm_result = self._call_deepseek_json(sys_prompt, user_prompt)
+        llm_result = call_llm(user_prompt, system_prompt=sys_prompt, json_mode=True, temperature=0.2, parse_json=True)
         
         if llm_result:
             return {
@@ -218,17 +175,10 @@ class KGTool:
 
         facts_text = "\n".join(facts_text_list)
 
-        sys_prompt = "Bioinformatician. Output strictly in JSON."
-        user_prompt = f"""
-        Context: {disease}.
-        Evidence:
-        {facts_text}
+        sys_prompt = "你是资深生物信息学家，请严格输出JSON格式。"
+        user_prompt = KG_VALIDATION_ANALYSIS.format(disease=disease, facts_text=facts_text)
 
-        Task: Synthesize hypothesis.
-        JSON Format: {{ "gene_hypotheses": {{ "GeneA": "Hypothesis..." }} }}
-        """
-
-        llm_result = self._call_deepseek_json(sys_prompt, user_prompt)
+        llm_result = call_llm(user_prompt, system_prompt=sys_prompt, json_mode=True, temperature=0.2, parse_json=True)
         
         if llm_result:
             return {

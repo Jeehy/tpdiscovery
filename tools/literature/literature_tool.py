@@ -1,63 +1,11 @@
 import json
-from tools.literature.literature_retriever import LiteratureRetriever
-import requests, time, os
-from dotenv import load_dotenv
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from tools.literature.retriever import LiteratureRetriever
+from prompts import LITERATURE_DISCOVERY_ANALYSIS, LITERATURE_VALIDATION_ANALYSIS
+from deepseek_api import call_llm
 
-# === 配置 DeepSeek ===
-BASE_URL = "https://api.deepseek.com/chat/completions"
-load_dotenv()
-API_KEY = os.getenv("DEEPSEEK_API_KEY")
-
-def call_deepseek(user_prompt: str, system_prompt: str = "You are a helpful assistant.", json_mode: bool = False, timeout: int = 60, retries: int = 3) -> str:
-    """
-    通用 DeepSeek 调用函数
-    :param user_prompt: 用户输入
-    :param system_prompt: 系统设定 (角色/任务约束)
-    :param json_mode: 是否强制输出 JSON 格式
-    :param timeout: 超时时间
-    :param retries: 重试次数
-    :return: 模型返回的文本内容 (如果是 JSON 模式，通常需要 json.loads 解析)
-    """
-    headers = {
-        "Content-Type": "application/json", 
-        "Authorization": f"Bearer {API_KEY}"
-    }
-    
-    payload = {
-        "model": "deepseek-chat",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        "stream": False,
-        "temperature": 0.3 # 保持低温度以获得稳定结果
-    }
-    
-    # 关键修改：支持 JSON Mode
-    if json_mode:
-        payload["response_format"] = {"type": "json_object"}
-
-    for attempt in range(retries):
-        try:
-            response = requests.post(BASE_URL, headers=headers, json=payload, timeout=timeout)
-            
-            if response.status_code != 200:
-                print(f"⚠️ [API Error] {response.status_code}: {response.text}")
-                if response.status_code >= 500: # 服务端错误可以重试
-                    time.sleep(2)
-                    continue
-                else:
-                    return "" # 客户端错误(4xx)直接返回空
-
-            result = response.json()
-            content = result["choices"][0]["message"]["content"]
-            return content
-
-        except Exception as e:
-            print(f"⚠️ [Network Error] Attempt {attempt+1}/{retries}: {e}")
-            time.sleep(2)
-            
-    return ""
 
 class LiteratureTool:
     """
@@ -97,67 +45,36 @@ class LiteratureTool:
         ])
 
         # 3. 构建 Prompt (根据 mode 选择完全不同的阅读策略)
-        sys_prompt = "You are a Senior Bio-curator. Output strictly in JSON."
+        sys_prompt = "你是资深生物医学文献分析师，请严格输出JSON格式。"
         
         if mode == "discovery":
             # === Discovery Prompt: 寻找旁证 ===
-            user_prompt = f"""
-            Target Gene: {gene}
-            Context: Potential NOVEL target for {disease}.
-            Search Mode: Discovery (Looking for indirect evidence in other cancers/mechanisms).
-            
-            Literature Evidence:
-            {context_str}
-            
-            Task:
-            1. **Translatability**: Is this gene a driver or drug target in OTHER cancers (e.g., Lung, Breast)?
-            2. **Mechanism**: Does it regulate a core pathway (e.g., Apoptosis, EMT) that is relevant to {disease}?
-            
-            Return JSON:
-            {{
-                "lit_support_level": "Indirect-High (Proven in other cancers)" or "Low",
-                "lit_conclusion": "Briefly summarize its potential for repurposing in {disease} based on side evidence.",
-                "key_citations": ["Author, Year", ...]
-            }}
-            """
+            user_prompt = LITERATURE_DISCOVERY_ANALYSIS.format(
+                gene=gene, disease=disease, context_str=context_str
+            )
         else:
             # === Validation Prompt: 寻找实锤 ===
-            user_prompt = f"""
-            Target Gene: {gene}
-            Context: Candidate target for {disease}.
-            Search Mode: Validation (Looking for DIRECT evidence in {disease}).
-            
-            Literature Evidence:
-            {context_str}
-            
-            Task:
-            1. **Direct Evidence**: Is there direct mention of {gene} in {disease}?
-            2. **Clinical Link**: Is it linked to prognosis, survival, or drug resistance in {disease}?
-            
-            Return JSON:
-            {{
-                "lit_support_level": "Strong (Direct Link)" or "Weak",
-                "lit_conclusion": "Briefly summarize the direct evidence in {disease}.",
-                "key_citations": ["Author, Year", ...]
-            }}
-            """
+            user_prompt = LITERATURE_VALIDATION_ANALYSIS.format(
+                gene=gene, disease=disease, context_str=context_str
+            )
 
         print(f"  🧠 [LitAgent] Analyzing {gene} ({mode})...")
         try:
-            llm_res_str = call_deepseek(user_prompt, sys_prompt, json_mode=True)
+            llm_res_str = call_llm(user_prompt, system_prompt=sys_prompt, json_mode=True)
             res_json = json.loads(llm_res_str)
             
             # =========== 🛠️ 关键修改：回填原始证据 ===========
             # 将 Top Docs 的原始文本塞回返回结果中
-            # 这样主程序就能拿到原始摘要了
+            # 这样主程序就能拿到原始摘要了，索引号与 LLM 引用对应
             res_json['raw_evidence_snippets'] = [
                 {
+                    "index": f"[{i+1}]",  # 与 prompt 中的编号对应
                     "title": d['metadata']['title'],
                     "citation": d['metadata'].get('citation', 'Unknown'),
                     "abstract": d['content'], # 保留完整摘要
                     "source": d.get('source', 'Online')
                 }
-                for d in top_docs
+                for i, d in enumerate(top_docs)
             ]
             # ===============================================
             
@@ -166,20 +83,51 @@ class LiteratureTool:
             print(f"  ⚠️ LLM Error: {e}")
             return {"error": "LLM Analysis Failed"}
 
-    def run_batch_verification(self, gene_list: list, disease: str, mode: str):
+    def run_batch_verification(self, gene_list: list, disease: str, mode: str, max_workers: int = 2, max_genes: int = 20, request_delay: float = 1.0):
         """
-        批量运行入口
+        批量运行入口 (并行优化版，带速率限制)
         :param mode: 必须显式传入 "discovery" 或 "validation"
+        :param max_workers: 并行线程数 (默认2，避免 PubMed API 限流)
+        :param max_genes: 最多验证的基因数量 (默认20)
+        :param request_delay: 每次请求间隔秒数 (默认1.0秒，PubMed 限制约3次/秒)
         """
-        print(f"\n📖 [LitAgent] Batch processing {len(gene_list)} genes in [{mode.upper()}] mode...")
+        import time
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        
+        # 限制候选数量
+        if len(gene_list) > max_genes:
+            print(f"⚠️ [LitAgent] 候选池过大 ({len(gene_list)})，只验证前 {max_genes} 个")
+            gene_list = gene_list[:max_genes]
+        
+        print(f"\n📖 [LitAgent] 并行处理 {len(gene_list)} 个基因 ({max_workers} workers, {request_delay}s间隔) [{mode.upper()}] mode...")
         results = {}
         
-        for item in gene_list:
-            # 兼容 item 是字典或字符串的情况
-            gene = item['Gene'] if isinstance(item, dict) else item
+        # 预处理基因名
+        genes_to_verify = [
+            item['Gene'] if isinstance(item, dict) else item 
+            for item in gene_list
+        ]
+        
+        def verify_single(gene):
+            return gene, self.verify_target(gene, disease, mode)
+        
+        # 使用较少的 workers 并添加延迟
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {}
+            for i, g in enumerate(genes_to_verify):
+                futures[executor.submit(verify_single, g)] = g
+                # 提交任务时添加延迟，避免同时发起太多请求
+                if i < len(genes_to_verify) - 1:
+                    time.sleep(request_delay)
             
-            # 直接使用传入的全局 mode，不再看 Tier
-            res = self.verify_target(gene, disease, mode)
-            results[gene] = res
-            
+            for future in as_completed(futures):
+                try:
+                    gene, res = future.result()
+                    results[gene] = res
+                except Exception as e:
+                    gene = futures[future]
+                    print(f"  ⚠️ {gene} 验证失败: {e}")
+                    results[gene] = {"error": str(e)}
+        
+        print(f"✅ [LitAgent] 完成 {len(results)} 个基因验证")
         return results
