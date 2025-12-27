@@ -17,9 +17,10 @@ class PubMedTool:
             self.email = email
             Entrez.email = email
 
-    def search(self, query: str, max_results: int = 3, retries: int = 3) -> List[Dict]:
+    def search(self, query: str, max_results: int = 3, retries: int = 3, request_delay: float = 0.4) -> List[Dict]:
         """
         使用 Biopython 查询 PubMed 并解析详细元数据 (作者、年份、期刊)
+        :param request_delay: API 请求间隔 (秒)，PubMed 限制无 API key 时约 3 次/秒
         """
         # logger.info(f"🔍 [PubMed] Searching: {query}")
         
@@ -33,6 +34,9 @@ class PubMedTool:
                 
                 if not id_list:
                     return []
+                
+                # 请求间隔，避免触发限流
+                time.sleep(request_delay)
 
                 # Step 2: EFetch 获取 MEDLINE 格式 (包含丰富元数据)
                 handle = Entrez.efetch(db="pubmed", id=id_list, rettype="medline", retmode="text")
