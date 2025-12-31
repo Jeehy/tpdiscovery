@@ -32,7 +32,8 @@ class ResearchExplorers:
         kg_narratives = kg_res.get('analysis_results', {})
         known_map = kg_res.get('known_status_map', {})
         # 获取 KGTool 返回的原始事实字典
-        kg_raw_map = kg_res.get('raw_facts_map', {}) 
+        kg_raw_map = kg_res.get('raw_facts_map', {})
+        kg_scores_map = kg_res.get('kg_scores', {})  # ✅ 新增: LLM 评分
 
         results = {}
         for gene in gene_list:
@@ -49,6 +50,7 @@ class ResearchExplorers:
                 "omics_signal": top_genes_map.get(gene),
                 "kg_narrative": kg_narratives.get(gene, "Potential novel link identified via Omics..."),
                 "kg_raw": raw_facts,
+                "kg_score": kg_scores_map.get(gene, 0),  # ✅ 新增: LLM 评分
                 "opentargets_data": {"score": ot_score, "status": "Novel/Low Confidence in Public DB"},
                 "is_known": False
             }
@@ -68,6 +70,7 @@ class ResearchExplorers:
         candidate_list = kg_res.get('target_list_for_omics', [])
         evidence_map = kg_res.get('evidence_details', {})
         raw_facts_map = kg_res.get('raw_facts_map', {})
+        kg_scores_map = kg_res.get('kg_scores', {})  # ✅ 新增: LLM 评分
         
         print(f"   -> KG 挖掘出 {len(candidate_list)} 个理论潜力基因")
         
@@ -83,6 +86,7 @@ class ResearchExplorers:
                 "strategy": "Path B (KG-First)",
                 "kg_narrative": evidence_map.get(gene),
                 "kg_raw": raw_facts_map.get(gene, []),
+                "kg_score": kg_scores_map.get(gene, 0),  # ✅ 新增: LLM 评分
                 "omics_signal": om_info, 
                 "opentargets_data": {"score": 0.0, "status": "Not Checked in Path B"}, # 暂不查 OT
                 "is_known": False 
@@ -106,6 +110,7 @@ class ResearchExplorers:
         kg_evidence = kg_res.get('analysis_results', {})
         known_map = kg_res.get('known_status_map', {})
         kg_raw_facts = kg_res.get('raw_facts_map', {})
+        kg_scores_map = kg_res.get('kg_scores', {})  # ✅ 新增: LLM 评分
         
         # 3. 获取 OpenTargets 权威证据
         ot_res = self.opentargets.run({"topic": disease, "genes": target_list})
@@ -120,6 +125,7 @@ class ResearchExplorers:
                 "omics_signal": omics_data.get(gene),
                 "kg_narrative": kg_evidence.get(gene),
                 "kg_raw": kg_raw_facts.get(gene, []),
+                "kg_score": kg_scores_map.get(gene, 0),  # ✅ 新增: LLM 评分
                 "opentargets_data": ot_info,
                 "is_known": known_map.get(gene, False)
             }

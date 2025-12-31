@@ -1,6 +1,29 @@
 import pandas as pd
 import os
 import glob
+import re
+
+def _clean_summary(text, max_length=200):
+    """清理 LLM 响应文本，去除 Markdown 格式符号，提取纯文本摘要"""
+    if not text or not isinstance(text, str):
+        return "暂无详细分析"
+    
+    # 1. 移除 Markdown 标题符号 (#)
+    text = re.sub(r'^#+\s*', '', text, flags=re.MULTILINE)
+    # 2. 移除加粗/斜体 (* 和 _)
+    text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', text)
+    text = re.sub(r'_{1,2}([^_]+)_{1,2}', r'\1', text)
+    # 3. 移除分隔线 (---)
+    text = re.sub(r'-{3,}', '', text)
+    # 4. 压缩多余空白
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    # 5. 截取并确保不截断在单词中间
+    if len(text) > max_length:
+        text = text[:max_length].rsplit(' ', 1)[0] + "..."
+    
+    return text if text else "暂无详细分析"
+
 class OmicsDataRetriever:
     """
     组学数据检索器 (Omics Data Retriever)
@@ -89,8 +112,8 @@ class OmicsDataRetriever:
         result = {}
         for _, row in top_df.iterrows():
             gene = row['merge_key']
-            # 提取 LLM 评价的一小段作为摘要
-            summary = str(row.get('LLM_Response', ''))[:150].replace('\n', ' ') + "..."
+            # 提取 LLM 评价并清理 Markdown 格式
+            summary = _clean_summary(row.get('LLM_Response', ''), max_length=200)
             
             result[gene] = {
                 "omics_score": float(row['AI_Score']),
@@ -142,7 +165,7 @@ class OmicsDataRetriever:
                     "spearman_r": float(best_match['Spearman_R']) if 'Spearman_R' in best_match and pd.notna(best_match['Spearman_R']) else None,
                     "p_correlation": float(best_match['P_Correlation']) if 'P_Correlation' in best_match and pd.notna(best_match['P_Correlation']) else None,
                     "drug_source": best_match['Source_Drug'],
-                    "ai_summary": str(best_match.get('LLM_Response', ''))[:100] + "..."
+                    "ai_summary": _clean_summary(best_match.get('LLM_Response', ''), max_length=200)
                 }
             else:
                 result[gene] = {

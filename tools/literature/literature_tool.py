@@ -1,6 +1,8 @@
 import json
 import sys
 import os
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from tools.literature.retriever import LiteratureRetriever
 from prompts import LITERATURE_DISCOVERY_ANALYSIS, LITERATURE_VALIDATION_ANALYSIS
@@ -38,8 +40,8 @@ class LiteratureTool:
         # 2. 数据预处理 (Context Preparation)
         top_docs = raw_docs[:5]
         context_str = "\n".join([
-            f"[{i+1}] Title: {d['metadata']['title']}\n"
-            f"    Aspect: {d.get('aspect', 'general')}\n"
+            f"[{i+1}] Title: {d['source_metadata'].get('title', 'Unknown')}\n"  
+            f"    Aspect: {d.get('search_aspect', 'general')}\n"             
             f"    Content: {d['content'][:500]}..." 
             for i, d in enumerate(top_docs)
         ])
@@ -68,11 +70,12 @@ class LiteratureTool:
             # 这样主程序就能拿到原始摘要了，索引号与 LLM 引用对应
             res_json['raw_evidence_snippets'] = [
                 {
-                    "index": f"[{i+1}]",  # 与 prompt 中的编号对应
-                    "title": d['metadata']['title'],
-                    "citation": d['metadata'].get('citation', 'Unknown'),
-                    "abstract": d['content'], # 保留完整摘要
-                    "source": d.get('source', 'Online')
+                    "index": f"[{i+1}]",
+                    "title": d['source_metadata'].get('title', 'Unknown'),       
+                    "citation": d['source_metadata'].get('citation', 'Unknown'), 
+                    "url": d['source_metadata'].get('url', ''),                  
+                    "abstract": d['content'],
+                    "source": d.get('source', 'Local_DB')
                 }
                 for i, d in enumerate(top_docs)
             ]
@@ -85,21 +88,17 @@ class LiteratureTool:
 
     def run_batch_verification(self, gene_list: list, disease: str, mode: str, max_workers: int = 2, max_genes: int = 20, request_delay: float = 1.0):
         """
-        批量运行入口 (并行优化版，带速率限制)
+        批量运行入口
         :param mode: 必须显式传入 "discovery" 或 "validation"
         :param max_workers: 并行线程数 (默认2，避免 PubMed API 限流)
         :param max_genes: 最多验证的基因数量 (默认20)
         :param request_delay: 每次请求间隔秒数 (默认1.0秒，PubMed 限制约3次/秒)
         """
-        import time
-        from concurrent.futures import ThreadPoolExecutor, as_completed
         
-        # 限制候选数量
         if len(gene_list) > max_genes:
             print(f"⚠️ [LitAgent] 候选池过大 ({len(gene_list)})，只验证前 {max_genes} 个")
             gene_list = gene_list[:max_genes]
-        
-        print(f"\n📖 [LitAgent] 并行处理 {len(gene_list)} 个基因 ({max_workers} workers, {request_delay}s间隔) [{mode.upper()}] mode...")
+        print(f"\n📖 [LitAgent] 并行处理 {len(gene_list)} 个基因 ({max_workers} workers) [{mode.upper()}] mode...")
         results = {}
         
         # 预处理基因名
@@ -111,12 +110,11 @@ class LiteratureTool:
         def verify_single(gene):
             return gene, self.verify_target(gene, disease, mode)
         
-        # 使用较少的 workers 并添加延迟
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {}
             for i, g in enumerate(genes_to_verify):
                 futures[executor.submit(verify_single, g)] = g
-                # 提交任务时添加延迟，避免同时发起太多请求
+                # 本地检索几乎不需要 delay，给一点点只是为了日志不刷屏
                 if i < len(genes_to_verify) - 1:
                     time.sleep(request_delay)
             

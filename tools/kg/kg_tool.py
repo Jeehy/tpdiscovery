@@ -135,6 +135,7 @@ class KGTool:
                 "status": "success",
                 "target_list_for_omics": llm_result.get("omics_targets", []), 
                 "evidence_details": llm_result.get("evidence_map", {}),
+                "kg_scores": llm_result.get("kg_scores", {}),  # ✅ 新增: LLM 评分
                 "raw_facts_map": raw_facts_map # ✅ 传递原始事实
             }
         return {"error": "LLM failed"}
@@ -185,6 +186,7 @@ class KGTool:
                 "mode": "validation",
                 "status": "success",
                 "analysis_results": llm_result.get("gene_hypotheses", {}),
+                "kg_scores": llm_result.get("kg_scores", {}),  # ✅ 新增: LLM 评分
                 "known_status_map": {g: (g in known_set) for g in gene_list}, # 返回每个基因是否已知
                 "raw_facts_map": raw_facts_map # ✅ 新增：必须返回这个，Validator 才能拿到数据
             }

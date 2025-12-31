@@ -57,6 +57,11 @@ class ValidationAgent:
                 else:
                     entry['raw_evidence_vault']['kg_raw_facts'] = list(raw_facts)
 
+            # ✅ 新增: 提取 KG LLM 评分
+            kg_score = data.get('kg_score', 0)
+            if kg_score > entry['scores']['kg']:
+                entry['scores']['kg'] = kg_score
+
             # 3. 提取 Omics 证据
             if 'omics_signal' in data and data['omics_signal']:
                 om_data = data['omics_signal']
